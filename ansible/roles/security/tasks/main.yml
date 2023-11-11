@@ -1,0 +1,203 @@
+- name: Wait for Connection
+  ansible.builtin.wait_for_connection:
+
+- name: Turn on ingoring broadcast pings
+  ansible.posix.sysctl:
+    name: net.ipv4.icmp_echo_ignore_broadcasts
+    value: '1'
+    state: present
+  become: true
+
+- name: Turn off packets forwarding
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: '0'
+    state: present
+  become: true
+
+- name: Turn off ICMP redirects
+  ansible.posix.sysctl:
+    name: net.ipv4.conf.{{ ansible_facts[item].device }}.accept_redirects
+    value: '0'
+    state: present
+  with_items: "{{ ansible_interfaces }}"
+  become: true
+
+- name: Turn off source routing
+  ansible.posix.sysctl:
+    name: net.ipv4.conf.{{ ansible_facts[item].device }}.accept_source_route
+    value: '0'
+    state: present
+  with_items: "{{ ansible_interfaces }}"
+  become: true
+
+- name: Install sudo package
+  ansible.builtin.package:
+    name: sudo
+    state: present
+  become: true
+
+- name: Set password policy
+  ansible.builtin.lineinfile:
+    path: /etc/pam.d/common-password
+    regexp: 'pam_unix.so'
+    line: 'password	[success=1 default=ignore]	pam_unix.so obscure yescrypt minlen=12'
+  become: true
+
+- name: Create personal groups for admins
+  ansible.builtin.group:
+    name: "{{ item.username }}"
+  with_items: "{{ admins }}"
+  become: true
+
+- name: Create admin accounts
+  ansible.builtin.user:
+    name: "{{ item.username }}"
+    password: "{{ item.password | password_hash('sha512', item.salt) }}"
+    comment: "{{ item.fullname }}"
+    group: "{{ item.username }}"
+    shell: /bin/bash
+    update_password: on_create
+  with_items: "{{ admins }}"
+  register: user_status
+  become: true
+
+- name: Force users to change password
+  ansible.builtin.shell: chage -d 0 {{ item.item.username }}
+  with_items: "{{ user_status.results }}"
+  when: item.changed
+  become: true
+
+- name: Create admin ssh dir"
+  ansible.builtin.file:
+    dest: /home/{{ item.username }}/.ssh
+    state: directory
+    owner: "{{ item.username }}"
+    group: "{{ item.username }}"
+    mode: u=rwx
+  with_items: "{{ admins }}"
+  become: true
+
+- name: Copy admins ssh public keys
+  ansible.builtin.copy:
+    dest: /home/{{ item.username }}/.ssh/authorized_key
+    content: "{{ item.ssh_public_key }}"
+    mode: u=rw
+  with_items: "{{ admins }}"
+  become: true
+
+- name: Install reasanoble sudoers file
+  ansible.builtin.template:
+    dest: "{{ sudoers_path }}"
+    src: templates/sudoers.j2
+    owner: root
+    group: root
+    mode: u=rw
+  become: true
+
+- name: Get sudoers.d content
+  ansible.builtin.find:
+    path: "{{ sudoersd_path }}"
+    file_type: "any"
+    hidden: true
+  register: directory_content_result
+
+- name: Cleanup sudoers.d content
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  with_items: "{{ directory_content_result.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  become: true
+
+- name: Disalble root login
+  ansible.builtin.user:
+    name: root
+    password_lock: true
+  become: true
+
+- name: Install reasanoble sshd config
+  ansible.builtin.copy:
+    dest: "{{ sshdconfig_path }}"
+    src: files/sshd_config
+    owner: root
+    group: root
+    mode: u=rw,g=r,o=r
+  notify:
+    - Restart sshd
+  become: true
+
+- name: Install ufw
+  ansible.builtin.package:
+    name: ufw
+    state: present
+  become: true
+
+- name: Allow ssh through firewall
+  community.general.ufw:
+    proto: tcp
+    port: 22
+    rule: allow
+  become: true
+
+- name: Allow ssh for vagrant through firewall
+  community.general.ufw:
+    proto: tcp
+    port: 2222
+    rule: allow
+  become: true
+
+- name: Allow vector api on lo
+  community.general.ufw:
+    proto: tcp
+    to_ip: 127.0.0.1
+    port: 8686
+    rule: allow
+  become: true
+
+- name: Set ufw policy
+  community.general.ufw:
+    state: enabled
+    direction: incoming
+    policy: deny
+  become: true
+
+- name: Install auditd
+  ansible.builtin.package:
+    name: auditd
+    state: present
+  become: true
+
+- name: Install auditd rules
+  ansible.builtin.copy:
+    dest: "{{ auditd_rules_path }}"
+    src: files/audit.rules
+    owner: root
+    group: root
+    mode: u=rw,g=r
+  notify:
+    - Restart auditd
+  become: true
+
+- name: Install script vector
+  ansible.builtin.shell: bash -c "$(curl -L {{ vector_url }})"
+  become: true
+
+- name: Install package vector
+  ansible.builtin.apt:
+    name: vector
+    state: present
+    update_cache: true
+  become: true
+
+- name: Copy vector config
+  ansible.builtin.copy:
+    dest: "{{ vectorconfig_path }}"
+    src: files/vector.yml
+    owner: root
+    group: root
+    mode: u=rw,g=r,o=r
+  notify:
+    - Restart vector
+  become: true

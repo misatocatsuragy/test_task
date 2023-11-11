@@ -1,0 +1,17 @@
+- name: Restart sshd
+  ansible.builtin.service:
+    name: ssh
+    state: restarted
+  become: true
+
+- name: Restart auditd
+  ansible.builtin.service:
+    name: auditd
+    state: restarted
+  become: true
+
+- name: Restart vector
+  ansible.builtin.service:
+    name: vector
+    state: restarted
+  become: true

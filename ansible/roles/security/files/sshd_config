@@ -1,0 +1,35 @@
+# Set to inet for IPv4-only or inet6 for IPv6-only
+AddressFamily any
+# TCP forwarding is convenient but can be abused
+AllowTcpForwarding yes
+# Display a message before users authenticate
+# Important for inane legal reasons and compliance requirements
+Banner /etc/banner
+# Disconnect inactive clients after 5 minutes
+ClientAliveInterval 300
+ClientAliveCountMax 1
+# Allow compression at all times
+Compression yes
+# Do not allow remote hosts to use forwarded ports
+GatewayPorts no
+# Record failed login attempts
+LogLevel VERBOSE
+# Reduced from the default of 6
+MaxAuthTries 3
+# Do not allow root to log in (encourages use of sudo)
+PermitRootLogin no
+# Prevent users from setting their environment in an authorized_keys file
+PermitUserEnvironment no
+# Use the "auth" facility for syslog messages
+SyslogFacility AUTH
+# Kill the session if a TCP connection is lost
+TCPKeepAlive no
+# Do not allow X forwarding if your site does not use X
+X11Forwarding no
+# We prefer to allow public key authentication only
+ChallengeResponseAuthentication no
+PasswordAuthentication no
+GSSAPIAuthentication no
+HostbasedAuthentication no
+PubkeyAuthentication yes
+UsePAM yes

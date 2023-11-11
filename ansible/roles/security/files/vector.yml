@@ -1,0 +1,68 @@
+api:
+  enabled: true
+  address: "127.0.0.1:8686"
+
+sources:
+  auditd_logs:
+    type: "file"
+    include:
+      - "/var/log/audit/audit.log"
+    read_from: "beginning"
+
+transforms:
+  auditd_parse:
+    inputs:
+      - "auditd_logs"
+    type: "remap"
+    source: |
+      structered, err = parse_regex(.message, r'^(type=(?P<type>[A-Z_]+)\smsg=audit\((?P<timestamp>[0-9.]+):(?P<seq>[0-9]+)\):\s(?P<other>.*))')
+      if err != null {
+        log(err)
+      }
+      type = structered.type
+      tstp, err = parse_timestamp(structered.timestamp, format: "%s%.f")
+      if err != null {
+        log(err)
+      }
+      seq, err = to_int(structered.seq)
+      if err != null {
+        log(err)
+      }
+      .timestamp = tstp
+      .type = type
+      .seq = seq
+      if type == "PROCTITLE" {
+        . |= parse_key_value!(structered.other)
+      } else {
+        other, err = parse_regex(structered.other, r'^(?P<prefix>.*)\u001d(?P<suffix>.*)$')
+        . |= parse_key_value!(other.prefix)
+        . |= parse_key_value!(other.suffix)
+      }
+      if err != null {
+        log(err)
+      }
+      del(.message)
+  auditd_group:
+    type: reduce
+    inputs:
+      - auditd_parse
+    group_by:
+      - seq
+    merge_strategies:
+      type: flat_unique
+  auditd_execve_filter:
+    type: filter
+    inputs:
+      - auditd_group
+    condition:
+      type: "vrl"
+      source: .SYSCALL == "execve"
+
+sinks:
+  execve_report:
+    type: file
+    encoding:
+      codec: json
+    inputs:
+      - auditd_execve_filter
+    path: /tmp/execve_report.txt

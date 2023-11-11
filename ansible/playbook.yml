@@ -1,0 +1,5 @@
+---
+- name: "Apply simple security settings"
+  hosts: test
+  roles:
+    - security

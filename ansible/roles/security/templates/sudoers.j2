@@ -1,0 +1,15 @@
+Defaults    !requiretty
+Defaults	env_reset
+Defaults	secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
+Defaults    env_keep += "SSH_AUTH_SOCK"
+
+# User privilege specification
+root	ALL=(ALL:ALL) ALL
+ansible ALL=(ALL) ALL
+vagrant ALL=(ALL) NOPASSWD:ALL
+
+{% for admin in admins %}
+{{ admin.username }} ALL=(ALL) ALL
+{% endfor %}
+
+@includedir /etc/sudoers.d
